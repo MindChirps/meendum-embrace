@@ -175,7 +175,12 @@ function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {
       });
       onCreated();
     } catch (e: any) {
-      setErr(e.message);
+      let msg = e?.message || "Failed";
+      if (e instanceof Response) {
+        try { msg = await e.text(); } catch {}
+      }
+      console.error("createRecipient failed", e, msg);
+      setErr(msg);
     } finally {
       setLoading(false);
     }

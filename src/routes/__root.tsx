@@ -79,6 +79,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "A calm, two-sided recovery companion for stroke survivors and their caregivers." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Meendum — Stroke Recovery" },
+      { name: "twitter:description", content: "A calm, two-sided recovery companion for stroke survivors and their caregivers." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/96696d76-d1d8-46c4-89f6-2945347e1688/id-preview-a8f6108e--9f608976-52ec-4340-8c30-8472724a1bbb.lovable.app-1778176630068.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/96696d76-d1d8-46c4-89f6-2945347e1688/id-preview-a8f6108e--9f608976-52ec-4340-8c30-8472724a1bbb.lovable.app-1778176630068.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

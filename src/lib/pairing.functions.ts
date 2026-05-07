@@ -42,7 +42,7 @@ export const createRecipient = createServerFn({ method: "POST" })
       code = genCode();
     }
 
-    const email = `recipient-${code.toLowerCase()}-${Date.now()}@meendum.app`;
+    const email = `recipient.${code.toLowerCase()}.${Date.now()}@example.com`;
     const password = crypto.randomUUID() + crypto.randomUUID();
     const { data: created, error: authErr } = await supabaseAdmin.auth.admin.createUser({
       email,

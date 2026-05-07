@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { createRecipient, getMyRecipient } from "@/lib/pairing.functions";
+import { createRecipient } from "@/lib/pairing.functions";
 import { dict, type Lang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/guardian")({
@@ -119,25 +119,33 @@ function AuthForm() {
 
 function GuardianHome() {
   const navigate = useNavigate();
-  const fetchRecipient = useServerFn(getMyRecipient);
-  const [recipient, setRecipient] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<"loading" | "needs-recipient">("loading");
 
   useEffect(() => {
-    fetchRecipient().then((r) => {
-      setRecipient(r);
-      setLoading(false);
+    let cancelled = false;
+    (async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) return;
+      const { data: r } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("guardian_id", sess.session.user.id)
+        .eq("role", "recipient")
+        .maybeSingle();
+      if (cancelled) return;
+      if (r) navigate({ to: "/guardian/dashboard" });
+      else setState("needs-recipient");
+    })().catch((e) => {
+      console.error("Guardian load failed", e);
+      if (!cancelled) setState("needs-recipient");
     });
-  }, [fetchRecipient]);
-
-  if (loading) return <div className="min-h-screen bg-background" />;
-  if (!recipient) return <CreateRecipientForm onCreated={() => navigate({ to: "/guardian/dashboard" })} />;
-
-  // Has recipient -> go to dashboard
-  useEffect(() => {
-    navigate({ to: "/guardian/dashboard" });
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
-  return null;
+
+  if (state === "loading") return <div className="min-h-screen bg-background" />;
+  return <CreateRecipientForm onCreated={() => navigate({ to: "/guardian/dashboard" })} />;
 }
 
 function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {
@@ -155,8 +163,15 @@ function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {
     setLoading(true);
     setErr(null);
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) throw new Error("Not signed in");
       await create({
-        data: { recipientName: name, affectedSide: side, preferredLanguage: recipientLang },
+        data: {
+          accessToken: sess.session.access_token,
+          recipientName: name,
+          affectedSide: side,
+          preferredLanguage: recipientLang,
+        },
       });
       onCreated();
     } catch (e: any) {

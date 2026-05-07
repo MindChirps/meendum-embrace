@@ -215,6 +215,7 @@ export type Database = {
     }
     Functions: {
       current_guardian_id: { Args: never; Returns: string }
+      my_guardian_id: { Args: never; Returns: string }
     }
     Enums: {
       body_side: "left" | "right"

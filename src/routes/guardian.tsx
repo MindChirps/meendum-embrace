@@ -120,24 +120,27 @@ function AuthForm() {
 function GuardianHome() {
   const navigate = useNavigate();
   const fetchRecipient = useServerFn(getMyRecipient);
-  const [recipient, setRecipient] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<"loading" | "needs-recipient">("loading");
 
   useEffect(() => {
-    fetchRecipient().then((r) => {
-      setRecipient(r);
-      setLoading(false);
-    });
-  }, [fetchRecipient]);
+    let cancelled = false;
+    fetchRecipient()
+      .then((r) => {
+        if (cancelled) return;
+        if (r) navigate({ to: "/guardian/dashboard" });
+        else setState("needs-recipient");
+      })
+      .catch((e) => {
+        console.error("getMyRecipient failed", e);
+        if (!cancelled) setState("needs-recipient");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchRecipient, navigate]);
 
-  if (loading) return <div className="min-h-screen bg-background" />;
-  if (!recipient) return <CreateRecipientForm onCreated={() => navigate({ to: "/guardian/dashboard" })} />;
-
-  // Has recipient -> go to dashboard
-  useEffect(() => {
-    navigate({ to: "/guardian/dashboard" });
-  }, [navigate]);
-  return null;
+  if (state === "loading") return <div className="min-h-screen bg-background" />;
+  return <CreateRecipientForm onCreated={() => navigate({ to: "/guardian/dashboard" })} />;
 }
 
 function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {

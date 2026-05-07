@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RecipientRouteImport } from './routes/recipient'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as GuardianRouteImport } from './routes/guardian'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GuardianDashboardRouteImport } from './routes/guardian.dashboard'
 
+const RecipientRoute = RecipientRouteImport.update({
+  id: '/recipient',
+  path: '/recipient',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PairRoute = PairRouteImport.update({
   id: '/pair',
   path: '/pair',
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/guardian': typeof GuardianRouteWithChildren
   '/pair': typeof PairRoute
+  '/recipient': typeof RecipientRoute
   '/guardian/dashboard': typeof GuardianDashboardRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/guardian': typeof GuardianRouteWithChildren
   '/pair': typeof PairRoute
+  '/recipient': typeof RecipientRoute
   '/guardian/dashboard': typeof GuardianDashboardRoute
 }
 export interface FileRoutesById {
@@ -52,24 +60,39 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/guardian': typeof GuardianRouteWithChildren
   '/pair': typeof PairRoute
+  '/recipient': typeof RecipientRoute
   '/guardian/dashboard': typeof GuardianDashboardRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/guardian' | '/pair' | '/guardian/dashboard'
+  fullPaths: '/' | '/guardian' | '/pair' | '/recipient' | '/guardian/dashboard'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/guardian' | '/pair' | '/guardian/dashboard'
-  id: '__root__' | '/' | '/guardian' | '/pair' | '/guardian/dashboard'
+  to: '/' | '/guardian' | '/pair' | '/recipient' | '/guardian/dashboard'
+  id:
+    | '__root__'
+    | '/'
+    | '/guardian'
+    | '/pair'
+    | '/recipient'
+    | '/guardian/dashboard'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GuardianRoute: typeof GuardianRouteWithChildren
   PairRoute: typeof PairRoute
+  RecipientRoute: typeof RecipientRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/recipient': {
+      id: '/recipient'
+      path: '/recipient'
+      fullPath: '/recipient'
+      preLoaderRoute: typeof RecipientRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pair': {
       id: '/pair'
       path: '/pair'
@@ -117,6 +140,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GuardianRoute: GuardianRouteWithChildren,
   PairRoute: PairRoute,
+  RecipientRoute: RecipientRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

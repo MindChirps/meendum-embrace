@@ -103,6 +103,35 @@ export type Database = {
           },
         ]
       }
+      recipient_credentials: {
+        Row: {
+          created_at: string
+          email: string
+          password: string
+          recipient_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          password: string
+          recipient_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          password?: string
+          recipient_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipient_credentials_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rest_mode: {
         Row: {
           is_resting: boolean

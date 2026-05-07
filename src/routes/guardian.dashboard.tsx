@@ -33,12 +33,14 @@ function Dashboard() {
   const loadAll = useCallback(async () => {
     const { data: sess } = await supabase.auth.getSession();
     if (!sess.session) return;
-    const { data: r } = await supabase
+    const { data: rows } = await supabase
       .from("profiles")
       .select("*")
       .eq("guardian_id", sess.session.user.id)
       .eq("role", "recipient")
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const r = rows?.[0];
     if (!r) {
       navigate({ to: "/guardian" });
       return;

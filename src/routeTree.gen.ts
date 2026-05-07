@@ -9,38 +9,81 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PairRouteImport } from './routes/pair'
+import { Route as GuardianRouteImport } from './routes/guardian'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GuardianDashboardRouteImport } from './routes/guardian.dashboard'
 
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GuardianRoute = GuardianRouteImport.update({
+  id: '/guardian',
+  path: '/guardian',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GuardianDashboardRoute = GuardianDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => GuardianRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/guardian': typeof GuardianRouteWithChildren
+  '/pair': typeof PairRoute
+  '/guardian/dashboard': typeof GuardianDashboardRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/guardian': typeof GuardianRouteWithChildren
+  '/pair': typeof PairRoute
+  '/guardian/dashboard': typeof GuardianDashboardRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/guardian': typeof GuardianRouteWithChildren
+  '/pair': typeof PairRoute
+  '/guardian/dashboard': typeof GuardianDashboardRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/guardian' | '/pair' | '/guardian/dashboard'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/guardian' | '/pair' | '/guardian/dashboard'
+  id: '__root__' | '/' | '/guardian' | '/pair' | '/guardian/dashboard'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GuardianRoute: typeof GuardianRouteWithChildren
+  PairRoute: typeof PairRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/guardian': {
+      id: '/guardian'
+      path: '/guardian'
+      fullPath: '/guardian'
+      preLoaderRoute: typeof GuardianRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,12 +91,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/guardian/dashboard': {
+      id: '/guardian/dashboard'
+      path: '/dashboard'
+      fullPath: '/guardian/dashboard'
+      preLoaderRoute: typeof GuardianDashboardRouteImport
+      parentRoute: typeof GuardianRoute
+    }
   }
 }
 
+interface GuardianRouteChildren {
+  GuardianDashboardRoute: typeof GuardianDashboardRoute
+}
+
+const GuardianRouteChildren: GuardianRouteChildren = {
+  GuardianDashboardRoute: GuardianDashboardRoute,
+}
+
+const GuardianRouteWithChildren = GuardianRoute._addFileChildren(
+  GuardianRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GuardianRoute: GuardianRouteWithChildren,
+  PairRoute: PairRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

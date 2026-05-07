@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
 function genCode() {
@@ -10,22 +9,28 @@ function genCode() {
   return s;
 }
 
-// Guardian creates the recipient: auth user, profile, credentials, pairing code.
+async function userFromToken(token: string) {
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data.user) throw new Error("Unauthorized");
+  return data.user;
+}
+
+// Guardian creates the recipient
 export const createRecipient = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
     z
       .object({
+        accessToken: z.string().min(10),
         recipientName: z.string().trim().min(1).max(40),
         affectedSide: z.enum(["left", "right"]),
         preferredLanguage: z.enum(["en", "ta"]).default("ta"),
       })
       .parse(d),
   )
-  .handler(async ({ data, context }) => {
-    const guardianId = context.userId;
+  .handler(async ({ data }) => {
+    const user = await userFromToken(data.accessToken);
+    const guardianId = user.id;
 
-    // generate unique pairing code
     let code = genCode();
     for (let i = 0; i < 5; i++) {
       const { data: existing } = await supabaseAdmin
@@ -37,7 +42,6 @@ export const createRecipient = createServerFn({ method: "POST" })
       code = genCode();
     }
 
-    // create auth user for recipient
     const email = `recipient-${code.toLowerCase()}-${Date.now()}@meendum.app`;
     const password = crypto.randomUUID() + crypto.randomUUID();
     const { data: created, error: authErr } = await supabaseAdmin.auth.admin.createUser({
@@ -48,7 +52,6 @@ export const createRecipient = createServerFn({ method: "POST" })
     if (authErr || !created.user) throw new Error(authErr?.message || "auth failed");
     const recipientId = created.user.id;
 
-    // profile (overrides any auto-created guardian-trigger row)
     await supabaseAdmin.from("profiles").upsert({
       id: recipientId,
       role: "recipient",
@@ -58,13 +61,11 @@ export const createRecipient = createServerFn({ method: "POST" })
       guardian_id: guardianId,
       pairing_code: code,
     });
-
     await supabaseAdmin.from("recipient_credentials").upsert({
       recipient_id: recipientId,
       email,
       password,
     });
-
     await supabaseAdmin.from("rest_mode").upsert({
       recipient_id: recipientId,
       is_resting: false,
@@ -73,7 +74,6 @@ export const createRecipient = createServerFn({ method: "POST" })
     return { recipientId, pairingCode: code };
   });
 
-// Recipient device redeems a pairing code -> returns credentials to sign in
 export const redeemPairingCode = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z.object({ code: z.string().trim().toUpperCase().length(6) }).parse(d),
@@ -94,17 +94,4 @@ export const redeemPairingCode = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!creds) throw new Error("No credentials");
     return { email: creds.email, password: creds.password, recipientId: profile.id };
-  });
-
-// Guardian fetches code for their recipient
-export const getMyRecipient = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { data } = await supabaseAdmin
-      .from("profiles")
-      .select("id, custom_name, preferred_language, affected_side, pairing_code")
-      .eq("guardian_id", context.userId)
-      .eq("role", "recipient")
-      .maybeSingle();
-    return data;
   });

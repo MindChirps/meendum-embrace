@@ -119,25 +119,30 @@ function AuthForm() {
 
 function GuardianHome() {
   const navigate = useNavigate();
-  const fetchRecipient = useServerFn(getMyRecipient);
   const [state, setState] = useState<"loading" | "needs-recipient">("loading");
 
   useEffect(() => {
     let cancelled = false;
-    fetchRecipient()
-      .then((r) => {
-        if (cancelled) return;
-        if (r) navigate({ to: "/guardian/dashboard" });
-        else setState("needs-recipient");
-      })
-      .catch((e) => {
-        console.error("getMyRecipient failed", e);
-        if (!cancelled) setState("needs-recipient");
-      });
+    (async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) return;
+      const { data: r } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("guardian_id", sess.session.user.id)
+        .eq("role", "recipient")
+        .maybeSingle();
+      if (cancelled) return;
+      if (r) navigate({ to: "/guardian/dashboard" });
+      else setState("needs-recipient");
+    })().catch((e) => {
+      console.error("Guardian load failed", e);
+      if (!cancelled) setState("needs-recipient");
+    });
     return () => {
       cancelled = true;
     };
-  }, [fetchRecipient, navigate]);
+  }, [navigate]);
 
   if (state === "loading") return <div className="min-h-screen bg-background" />;
   return <CreateRecipientForm onCreated={() => navigate({ to: "/guardian/dashboard" })} />;

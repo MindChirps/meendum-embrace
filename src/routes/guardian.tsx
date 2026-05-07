@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
-import { createRecipient, getMyRecipient } from "@/lib/pairing.functions";
+import { createRecipient } from "@/lib/pairing.functions";
 import { dict, type Lang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/guardian")({

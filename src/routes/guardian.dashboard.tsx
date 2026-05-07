@@ -15,7 +15,6 @@ export const Route = createFileRoute("/guardian/dashboard")({
 
 function Dashboard() {
   const navigate = useNavigate();
-  const fetchRecipient = useServerFn(getMyRecipient);
   const [lang, setLang] = useState<Lang>("en");
   const [recipient, setRecipient] = useState<any>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -32,7 +31,14 @@ function Dashboard() {
   }, [navigate]);
 
   const loadAll = useCallback(async () => {
-    const r = await fetchRecipient();
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess.session) return;
+    const { data: r } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("guardian_id", sess.session.user.id)
+      .eq("role", "recipient")
+      .maybeSingle();
     if (!r) {
       navigate({ to: "/guardian" });
       return;
@@ -59,7 +65,7 @@ function Dashboard() {
       .eq("recipient_id", r.id)
       .maybeSingle();
     setResting(rest?.is_resting ?? false);
-  }, [fetchRecipient, navigate]);
+  }, [navigate]);
 
   useEffect(() => {
     if (authReady) loadAll();

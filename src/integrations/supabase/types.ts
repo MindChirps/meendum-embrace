@@ -14,16 +14,186 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity_logs: {
+        Row: {
+          created_at: string
+          duration_seconds: number
+          id: string
+          recipient_id: string
+          skip_reason: Database["public"]["Enums"]["skip_reason"] | null
+          status: Database["public"]["Enums"]["log_status"]
+          task_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          recipient_id: string
+          skip_reason?: Database["public"]["Enums"]["skip_reason"] | null
+          status: Database["public"]["Enums"]["log_status"]
+          task_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          recipient_id?: string
+          skip_reason?: Database["public"]["Enums"]["skip_reason"] | null
+          status?: Database["public"]["Enums"]["log_status"]
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_logs_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          affected_side: Database["public"]["Enums"]["body_side"] | null
+          created_at: string
+          custom_name: string
+          guardian_id: string | null
+          id: string
+          pairing_code: string | null
+          preferred_language: Database["public"]["Enums"]["lang"]
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string
+        }
+        Insert: {
+          affected_side?: Database["public"]["Enums"]["body_side"] | null
+          created_at?: string
+          custom_name?: string
+          guardian_id?: string | null
+          id: string
+          pairing_code?: string | null
+          preferred_language?: Database["public"]["Enums"]["lang"]
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+        }
+        Update: {
+          affected_side?: Database["public"]["Enums"]["body_side"] | null
+          created_at?: string
+          custom_name?: string
+          guardian_id?: string | null
+          id?: string
+          pairing_code?: string | null
+          preferred_language?: Database["public"]["Enums"]["lang"]
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rest_mode: {
+        Row: {
+          is_resting: boolean
+          recipient_id: string
+          updated_at: string
+        }
+        Insert: {
+          is_resting?: boolean
+          recipient_id: string
+          updated_at?: string
+        }
+        Update: {
+          is_resting?: boolean
+          recipient_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rest_mode_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          created_at: string
+          guardian_id: string
+          id: string
+          is_active: boolean
+          name: string
+          recipient_id: string
+          session_type: Database["public"]["Enums"]["session_type"]
+          sort_order: number
+          target_reps: number
+        }
+        Insert: {
+          created_at?: string
+          guardian_id: string
+          id?: string
+          is_active?: boolean
+          name: string
+          recipient_id: string
+          session_type: Database["public"]["Enums"]["session_type"]
+          sort_order?: number
+          target_reps?: number
+        }
+        Update: {
+          created_at?: string
+          guardian_id?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          recipient_id?: string
+          session_type?: Database["public"]["Enums"]["session_type"]
+          sort_order?: number
+          target_reps?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_guardian_id_fkey"
+            columns: ["guardian_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      current_guardian_id: { Args: never; Returns: string }
     }
     Enums: {
-      [_ in never]: never
+      body_side: "left" | "right"
+      lang: "en" | "ta"
+      log_status: "completed" | "skipped"
+      session_type: "morning" | "afternoon" | "evening"
+      skip_reason: "pain" | "fatigue"
+      user_role: "guardian" | "recipient"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +320,13 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      body_side: ["left", "right"],
+      lang: ["en", "ta"],
+      log_status: ["completed", "skipped"],
+      session_type: ["morning", "afternoon", "evening"],
+      skip_reason: ["pain", "fatigue"],
+      user_role: ["guardian", "recipient"],
+    },
   },
 } as const

@@ -163,8 +163,15 @@ function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {
     setLoading(true);
     setErr(null);
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess.session) throw new Error("Not signed in");
       await create({
-        data: { recipientName: name, affectedSide: side, preferredLanguage: recipientLang },
+        data: {
+          accessToken: sess.session.access_token,
+          recipientName: name,
+          affectedSide: side,
+          preferredLanguage: recipientLang,
+        },
       });
       onCreated();
     } catch (e: any) {

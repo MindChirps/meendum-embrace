@@ -1,8 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useServerFn } from "@tanstack/react-start";
-import { getMyRecipient } from "@/lib/pairing.functions";
 import { dict, type Lang } from "@/lib/i18n";
 import type { Database } from "@/integrations/supabase/types";
 

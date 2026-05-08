@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
@@ -10,6 +10,7 @@ export const Route = createFileRoute("/guardian")({
 });
 
 function GuardianGate() {
+  const location = useLocation();
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -26,6 +27,7 @@ function GuardianGate() {
 
   if (!ready) return <div className="min-h-screen bg-background" />;
   if (!userId) return <AuthForm />;
+  if (location.pathname.startsWith("/guardian/")) return <Outlet />;
   return <GuardianHome />;
 }
 

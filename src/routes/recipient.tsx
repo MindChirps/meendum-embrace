@@ -42,20 +42,26 @@ function RecipientPage() {
     });
   }, [navigate]);
 
-  const session = currentSession();
+  const [session, setSession] = useState<ReturnType<typeof currentSession>>(null);
+  useEffect(() => {
+    setSession(currentSession());
+    const i = setInterval(() => setSession(currentSession()), 60_000);
+    return () => clearInterval(i);
+  }, []);
 
   const loadTasks = useCallback(async () => {
-    if (!profile || !session) {
+    if (!profile) {
       setTasks([]);
       return;
     }
-    const { data: tdata } = await supabase
+    let q = supabase
       .from("tasks")
       .select("*")
       .eq("recipient_id", profile.id)
-      .eq("session_type", session)
       .eq("is_active", true)
       .order("sort_order");
+    if (session) q = q.eq("session_type", session);
+    const { data: tdata } = await q;
     setTasks(tdata ?? []);
     // mark already-done tasks
     const today = new Date();
@@ -100,7 +106,7 @@ function RecipientPage() {
   const remaining = tasks.filter((t) => !doneIds.has(t.id));
   const currentTask = remaining[0];
 
-  if (!session) return <NoSession lang={profile.preferred_language} profile={profile} />;
+  if (!session && tasks.length === 0) return <NoSession lang={profile.preferred_language} profile={profile} />;
   if (!currentTask) return <SessionDone lang={profile.preferred_language} profile={profile} />;
 
   return (

@@ -133,7 +133,6 @@ function GuardianHome() {
         .select("id")
         .eq("guardian_id", sess.session.user.id)
         .eq("role", "recipient")
-        .order("created_at", { ascending: false })
         .limit(1);
       const r = rows?.[0];
       if (cancelled) return;

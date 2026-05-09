@@ -38,9 +38,22 @@ function Dashboard() {
       .select("*")
       .eq("guardian_id", sess.session.user.id)
       .eq("role", "recipient")
-      .order("created_at", { ascending: false })
-      .limit(1);
-    const r = rows?.[0];
+      .order("created_at", { ascending: true });
+    // Prefer a recipient that already has tasks (the one actually in use)
+    let r = rows?.[0];
+    if (rows && rows.length > 1) {
+      const ids = rows.map((x) => x.id);
+      const { data: tcounts } = await supabase
+        .from("tasks")
+        .select("recipient_id")
+        .in("recipient_id", ids);
+      if (tcounts && tcounts.length > 0) {
+        const counts = new Map<string, number>();
+        tcounts.forEach((t) => counts.set(t.recipient_id, (counts.get(t.recipient_id) ?? 0) + 1));
+        const best = rows.find((x) => (counts.get(x.id) ?? 0) > 0);
+        if (best) r = best;
+      }
+    }
     if (!r) {
       navigate({ to: "/guardian" });
       return;

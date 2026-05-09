@@ -106,7 +106,7 @@ function RecipientPage() {
   const remaining = tasks.filter((t) => !doneIds.has(t.id));
   const currentTask = remaining[0];
 
-  if (!session) return <NoSession lang={profile.preferred_language} profile={profile} />;
+  if (!session && tasks.length === 0) return <NoSession lang={profile.preferred_language} profile={profile} />;
   if (!currentTask) return <SessionDone lang={profile.preferred_language} profile={profile} />;
 
   return (

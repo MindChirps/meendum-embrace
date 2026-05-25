@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { redeemPairingCode } from "@/lib/pairing.functions";
-import { supabase } from "@/integrations/supabase/client";
+import { setRecipientSession } from "@/lib/recipient-session";
 import { dict, type Lang } from "@/lib/i18n";
 
 export const Route = createFileRoute("/pair")({
@@ -23,9 +23,8 @@ function PairPage() {
     setLoading(true);
     setErr(null);
     try {
-      const { email, password } = await redeem({ data: { code } });
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      const { recipientId } = await redeem({ data: { code } });
+      setRecipientSession({ recipientId, pairingCode: code.toUpperCase() });
       navigate({ to: "/recipient" });
     } catch (e: any) {
       setErr(e.message);

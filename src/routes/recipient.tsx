@@ -1,6 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import {
+  getRecipientProfile,
+  getRecipientTasks,
+  logActivity,
+  getActivityLogs,
+  getRestMode,
+} from "@/lib/pairing.functions";
+import { getRecipientSession, clearRecipientSession } from "@/lib/recipient-session";
 import { dict, type Lang } from "@/lib/i18n";
 import { currentSession } from "@/lib/session";
 import { playChime, playApplause } from "@/lib/audio";
@@ -16,31 +24,32 @@ export const Route = createFileRoute("/recipient")({
 
 function RecipientPage() {
   const navigate = useNavigate();
+  const [code, setCode] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
   const [resting, setResting] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
+
+  const fetchProfile = useServerFn(getRecipientProfile);
+  const fetchTasks = useServerFn(getRecipientTasks);
+  const fetchLogs = useServerFn(getActivityLogs);
+  const fetchRest = useServerFn(getRestMode);
+  const sendLog = useServerFn(logActivity);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
+    const sess = getRecipientSession();
+    if (!sess) {
+      navigate({ to: "/pair" });
+      return;
+    }
+    setCode(sess.pairingCode);
+    fetchProfile({ data: { code: sess.pairingCode } })
+      .then((p) => setProfile(p as Profile))
+      .catch(() => {
+        clearRecipientSession();
         navigate({ to: "/pair" });
-        return;
-      }
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", data.session.user.id)
-        .maybeSingle();
-      if (!p || p.role !== "recipient") {
-        navigate({ to: "/" });
-        return;
-      }
-      setProfile(p);
-      setAuthChecked(true);
-    });
-  }, [navigate]);
+      });
+  }, [navigate, fetchProfile]);
 
   const [session, setSession] = useState<ReturnType<typeof currentSession>>(null);
   useEffect(() => {
@@ -50,64 +59,50 @@ function RecipientPage() {
   }, []);
 
   const loadTasks = useCallback(async () => {
-    if (!profile) {
+    if (!code || !profile) {
       setTasks([]);
       return;
     }
-    let q = supabase
-      .from("tasks")
-      .select("*")
-      .eq("recipient_id", profile.id)
-      .eq("is_active", true)
-      .order("sort_order");
-    if (session) q = q.eq("session_type", session);
-    const { data: tdata } = await q;
-    setTasks(tdata ?? []);
-    // mark already-done tasks
+    const tdata = await fetchTasks({ data: { code, sessionType: session ?? null } });
+    setTasks(tdata as Task[]);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const { data: ldata } = await supabase
-      .from("activity_logs")
-      .select("task_id")
-      .eq("recipient_id", profile.id)
-      .gte("created_at", today.toISOString());
-    setDoneIds(new Set((ldata ?? []).map((l) => l.task_id)));
-  }, [profile, session]);
+    const ldata = await fetchLogs({ data: { code, sinceIso: today.toISOString() } });
+    setDoneIds(new Set((ldata as Array<{ task_id: string }>).map((l) => l.task_id)));
+  }, [code, profile, session, fetchTasks, fetchLogs]);
 
   useEffect(() => {
-    if (authChecked) loadTasks();
-  }, [authChecked, loadTasks]);
+    if (profile) loadTasks();
+  }, [profile, loadTasks]);
 
-  // realtime: rest mode
+  // Poll rest mode every 4s (replaces realtime subscription for the un-authed recipient)
   useEffect(() => {
-    if (!profile) return;
-    supabase
-      .from("rest_mode")
-      .select("is_resting")
-      .eq("recipient_id", profile.id)
-      .maybeSingle()
-      .then(({ data }) => setResting(data?.is_resting ?? false));
-    const ch = supabase
-      .channel(`rest-${profile.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "rest_mode", filter: `recipient_id=eq.${profile.id}` },
-        (p) => setResting((p.new as any)?.is_resting ?? false),
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
+    if (!code) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { isResting } = await fetchRest({ data: { code } });
+        if (!cancelled) setResting(isResting);
+      } catch {
+        /* ignore */
+      }
     };
-  }, [profile]);
+    tick();
+    const i = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(i);
+    };
+  }, [code, fetchRest]);
 
-  if (!profile) return <div className="min-h-screen bg-background" />;
+  if (!profile || !code) return <div className="min-h-screen bg-background" />;
   if (resting) return <RestModeScreen lang={profile.preferred_language} />;
 
   const remaining = tasks.filter((t) => !doneIds.has(t.id));
   const currentTask = remaining[0];
 
   if (!session && tasks.length === 0) return <NoSession lang={profile.preferred_language} profile={profile} />;
-  if (!currentTask) return <SessionDone lang={profile.preferred_language} profile={profile} />;
+  if (!currentTask) return <SessionDone lang={profile.preferred_language} profile={profile} code={code} />;
 
   return (
     <TaskScreen
@@ -115,15 +110,16 @@ function RecipientPage() {
       task={currentTask}
       profile={profile}
       onComplete={async (durationSec, skipReason) => {
-        await supabase.from("activity_logs").insert({
-          task_id: currentTask.id,
-          recipient_id: profile.id,
-          status: skipReason ? "skipped" : "completed",
-          skip_reason: skipReason ?? null,
-          duration_seconds: durationSec,
+        await sendLog({
+          data: {
+            code,
+            taskId: currentTask.id,
+            status: skipReason ? "skipped" : "completed",
+            skipReason: skipReason ?? null,
+            durationSeconds: durationSec,
+          },
         });
-        if (skipReason) playChime();
-        else playChime();
+        playChime();
         setDoneIds((s) => new Set(s).add(currentTask.id));
       }}
     />
@@ -158,23 +154,19 @@ function TaskScreen({
 
   return (
     <div className="min-h-screen bg-background flex flex-col p-4">
-      {/* Posture badge */}
       <div className="self-center bg-accent/10 text-accent text-sm font-medium px-4 py-1 rounded-full">
         🧘 {t("sitStraight")}
       </div>
 
-      {/* Body icon */}
       <div className="flex-shrink-0 flex justify-center mt-4">
         <BodyIcon affected={profile.affected_side as "left" | "right" | null} size={120} />
       </div>
 
-      {/* Task name */}
       <h1 className="text-center text-4xl font-bold mt-4 px-4 text-foreground">
         {task.name}
         {task.target_reps > 1 && <span className="block text-2xl text-muted-foreground mt-1">×{task.target_reps}</span>}
       </h1>
 
-      {/* Big action area */}
       <div className="flex-1 flex items-center justify-center my-6">
         {phase === "idle" && (
           <button
@@ -219,7 +211,6 @@ function TaskScreen({
         <p className="text-center text-muted-foreground text-lg mb-2">{t("breatheSlow")}</p>
       )}
 
-      {/* Skip button */}
       {phase !== "skip" && (
         <button
           onClick={() => setPhase("skip")}
@@ -242,31 +233,29 @@ function NoSession({ lang, profile }: { lang: Lang; profile: Profile }) {
   );
 }
 
-function SessionDone({ lang, profile }: { lang: Lang; profile: Profile }) {
+function SessionDone({ lang, profile, code }: { lang: Lang; profile: Profile; code: string }) {
   const t = (k: keyof typeof dict) => dict[k][lang];
   const [week, setWeek] = useState<boolean[]>([false, false, false, false, false, false, false]);
+  const fetchLogs = useServerFn(getActivityLogs);
 
   useEffect(() => {
     playApplause();
     const start = new Date();
     start.setDate(start.getDate() - 6);
     start.setHours(0, 0, 0, 0);
-    supabase
-      .from("activity_logs")
-      .select("created_at, status")
-      .eq("recipient_id", profile.id)
-      .gte("created_at", start.toISOString())
-      .then(({ data }) => {
+    fetchLogs({ data: { code, sinceIso: start.toISOString() } })
+      .then((data) => {
         const days = [false, false, false, false, false, false, false];
-        (data ?? []).forEach((l) => {
+        (data as Array<{ created_at: string }>).forEach((l) => {
           const d = new Date(l.created_at);
           d.setHours(0, 0, 0, 0);
           const idx = 6 - Math.floor((Date.now() - d.getTime()) / 86400000);
           if (idx >= 0 && idx < 7) days[idx] = true;
         });
         setWeek(days);
-      });
-  }, [profile.id]);
+      })
+      .catch(() => {});
+  }, [code, profile.id, fetchLogs]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">

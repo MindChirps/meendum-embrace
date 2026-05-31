@@ -159,10 +159,13 @@ function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const create = useServerFn(createRecipient);
+  const submittingRef = useRef(false);
   const t = (k: keyof typeof dict) => dict[k][lang];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setErr(null);
     try {
@@ -177,6 +180,7 @@ function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {
         },
       });
       onCreated();
+      // Intentionally leave submittingRef = true so any mid-flight taps stay blocked until unmount/navigation.
     } catch (e: any) {
       let msg = e?.message || "Failed";
       if (e instanceof Response) {
@@ -184,7 +188,7 @@ function CreateRecipientForm({ onCreated }: { onCreated: () => void }) {
       }
       console.error("createRecipient failed", e, msg);
       setErr(msg);
-    } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   }

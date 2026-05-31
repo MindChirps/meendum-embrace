@@ -44,14 +44,28 @@ export const createRecipient = createServerFn({ method: "POST" })
     const user = await userFromToken(data.accessToken);
     const guardianId = user.id;
 
+    // Idempotency: if this guardian already has a recipient, return it.
+    // Pick the oldest one to match the cleanup policy.
+    const { data: existingRecipients } = await supabaseAdmin
+      .from("profiles")
+      .select("id, pairing_code")
+      .eq("guardian_id", guardianId)
+      .eq("role", "recipient")
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const existing = existingRecipients?.[0];
+    if (existing && existing.pairing_code) {
+      return { recipientId: existing.id, pairingCode: existing.pairing_code };
+    }
+
     let code = genCode();
     for (let i = 0; i < 5; i++) {
-      const { data: existing } = await supabaseAdmin
+      const { data: clash } = await supabaseAdmin
         .from("profiles")
         .select("id")
         .eq("pairing_code", code)
         .maybeSingle();
-      if (!existing) break;
+      if (!clash) break;
       code = genCode();
     }
 

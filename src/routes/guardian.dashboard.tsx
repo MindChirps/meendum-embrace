@@ -161,6 +161,9 @@ function Dashboard() {
           <TodayProgress tasks={tasks} logs={logs} lang={lang} />
         </section>
 
+        {/* History & Trends */}
+        <HistorySection recipientId={recipient.id} tasks={tasks} lang={lang} />
+
         {/* Tasks per session */}
         {SESSIONS.map((s) => (
           <SessionBlock

@@ -65,6 +65,15 @@ export const dict = {
   skipped: { en: "Skipped", ta: "தவிர்க்கப்பட்டது" },
   pending: { en: "Pending", ta: "நிலுவையில்" },
   maxTasks: { en: "Max 4 active tasks per session", ta: "ஒரு கால பகுதிக்கு அதிகபட்சம் 4 பணிகள்" },
+
+  // History
+  history: { en: "History", ta: "வரலாறு" },
+  last7Days: { en: "Last 7 days", ta: "கடந்த 7 நாட்கள்" },
+  last30Days: { en: "Last 30 days", ta: "கடந்த 30 நாட்கள்" },
+  consistency: { en: "Consistency", ta: "தொடர்ச்சி" },
+  painVsFatigue: { en: "Pain vs fatigue", ta: "வலி / சோர்வு" },
+  perTaskAdherence: { en: "By task", ta: "பணி வாரியாக" },
+  noActivityPeriod: { en: "No activity yet for this period.", ta: "இந்த காலத்தில் இதுவரை செயல்பாடு இல்லை." },
 } as const;
 
 export type DictKey = keyof typeof dict;

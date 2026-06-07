@@ -1,47 +1,58 @@
-## Why your proposal needs adjusting
+## Add History & Trends section to guardian dashboard
 
-Steps 1 and 3 of your proposal are already implemented:
-- `GuardianHome` (routes/guardian.tsx) already queries `profiles` filtered by `guardian_id` + `role='recipient'`, shows a blank screen while loading, and only renders `CreateRecipientForm` when the query returns zero rows.
-- `guardian.dashboard.tsx` already handles duplicates — and it does so better than your proposal: it picks the recipient that has tasks, falling back to the first row. Switching to "earliest `created_at`" would regress this if a user ever added tasks to a duplicate.
+Read-only analytics over existing `activity_logs`. No DB/RLS/server changes.
 
-So the lookup isn't failing silently. The real bug is that **duplicates are being created** in the first place. Two root causes:
+### Files
 
-1. **Double submission on mobile.** `CreateRecipientForm` only guards with `disabled={loading}`. A fast double-tap fires two submits before React re-renders.
-2. **`createRecipient` server fn is not idempotent.** It always inserts a new profile with a fresh `pairing_code`, even if the guardian already has a recipient.
+1. **`src/lib/i18n.ts`** — Append 7 new keys (en/ta): `history`, `last7Days`, `last30Days`, `consistency`, `painVsFatigue`, `perTaskAdherence`, `noActivityPeriod`.
 
-## Plan
+2. **`src/routes/guardian.dashboard.tsx`** — Add a new `<HistorySection recipientId={recipient.id} tasks={tasks} lang={lang} />` rendered directly under the "Today's progress" card, before the SESSIONS map. All other code untouched.
 
-### 1. Harden `CreateRecipientForm` against double submission
-File: `src/routes/guardian.tsx`
-- Add a `useRef(false)` "submitting" flag, set synchronously at the top of `submit()`, checked before doing anything. This blocks even a synchronous double-fire that beats the `setLoading(true)` re-render.
-- Keep the existing `disabled={loading}` on the button.
-- On successful `create(...)`, navigate immediately (already happens via `onCreated`); ensure the ref stays `true` until navigation so a third tap mid-flight is also ignored.
+### `HistorySection` component (inside same file)
 
-### 2. Make `createRecipient` idempotent (the real fix)
-File: `src/lib/pairing.functions.ts`
-- At the top of the handler, after auth, query `profiles` for an existing row with `guardian_id = userId` AND `role = 'recipient'`.
-- If one already exists, return it (its existing `pairing_code` and `id`) instead of inserting a new row. No new pairing code is ever generated for a guardian who already has a recipient.
-- Only when none exists, run the current insert logic.
+State: `range: 7 | 30` (default 7), `logs: Log[]`, `loading: boolean`, `open: boolean` (collapsible, default open).
 
-This guarantees: even if a race or a future bug calls `createRecipient` twice, the second call returns the existing recipient instead of creating a duplicate. This is the durable fix.
+Fetch: on mount and whenever `range` or `recipientId` changes, query
+```
+supabase.from("activity_logs")
+  .select("*")
+  .eq("recipient_id", recipientId)
+  .gte("created_at", since.toISOString())
+  .order("created_at", { ascending: true })
+```
+where `since` = local midnight `range` days ago.
 
-### 3. Keep dashboard selection logic as-is
-File: `src/routes/guardian.dashboard.tsx`
-- No change. Current "prefer recipient with tasks, else first" is correct.
+### Three sub-panels
 
-### 4. One-time cleanup migration
-Per your answer: always keep the oldest recipient per guardian, delete the rest.
-- For each `guardian_id` that has more than one `role='recipient'` profile, keep the row with the smallest `created_at` and delete the others.
-- Cascade: also delete from `tasks`, `activity_logs`, `rest_mode` where `recipient_id` is in the to-be-deleted set, to avoid orphan rows.
-- Will run via `supabase--migration` (DELETE requires migration, not the insert tool).
+**A. Date range toggle** — Two pill buttons ("Last 7 days" / "Last 30 days") using existing `bg-muted` / `bg-primary text-primary-foreground` token pattern.
 
-### Out of scope (intentional)
-- Not changing `GuardianHome` lookup — already correct.
-- Not changing dashboard selection — already correct and safer than the proposed alternative.
-- Not touching recipient-side `/pair` flow or pairing code format.
+**B. Consistency bar chart** (recharts `BarChart`)
+- Bucket logs by local YYYY-MM-DD; one bar per day in range (fill zero-days with 0).
+- Bar value = completed + skipped count that day.
+- Per-bar fill: `hsl(var(--accent))` if any skip that day, else `hsl(var(--primary))` (use Cell).
+- X-axis: short date label (`MM/DD` or `DD/MM` — use `toLocaleDateString(lang === "ta" ? "ta-IN" : "en-GB", {day:"2-digit", month:"2-digit"})`).
+- Wrap in `ResponsiveContainer` at fixed height (e.g. 160px on 7d, 200px on 30d).
 
-## Technical notes
+**C. Pain vs Fatigue panel**
+- Summary row: two large counts — `pain: N` and `fatigue: M` (over range), using `t("pain")` and `t("fatigue")`.
+- Grouped bar chart below: per day, two bars (pain count, fatigue count) — uses `--destructive` for pain, `--accent` for fatigue. Same x-axis as consistency.
+- Skip days with zero of both? No — keep the same day axis as consistency for visual alignment.
 
-- The idempotency check in step 2 uses the same `supabaseAdmin` client already used by `createRecipient` (since the server fn runs with service role per the existing pattern in `pairing.functions.ts`). RLS isn't a concern.
-- The `useRef` guard in step 1 is necessary in addition to `loading` state because React state updates are batched/async; a touch event firing twice within ~16ms can both pass `if (loading) return` before either re-render lands.
-- Cleanup migration is destructive — once approved and run, deleted duplicate recipients (and any tasks on them) are gone. Per your answer this is acceptable.
+**D. Per-task adherence list**
+- For each task in `tasks` where `is_active`, compute `completed = logs.filter(l => l.task_id === task.id && l.status==="completed").length` and `skipped = ... === "skipped"`.
+- Render a `<ul>` of rows: task name + small badges `✓ X` (primary) and `✗ Y` (accent), matching existing list row styling (`bg-background rounded-lg p-2`).
+
+### Loading & empty states
+
+- While `loading`: render a single muted line "…" placeholder block at chart height (no skeleton dep needed).
+- If `logs.length === 0` after load: render only the range toggle + a centered muted `<p>` with `t("noActivityPeriod")`. Hide the three panels.
+
+### Styling
+
+Uses existing tokens only (`bg-card`, `border-border`, `rounded-2xl`, `bg-muted`, `text-primary`, `text-accent`, `text-destructive`). Section wrapper mirrors the existing "Today's progress" card. Collapsible header: tap to toggle, chevron rotation; default open.
+
+### Out of scope (explicit)
+
+- No schema/migration/RLS/server-function changes.
+- No changes to recipient screen, pairing, SOS/rest, today's progress, or session blocks.
+- No new npm packages (recharts already installed).

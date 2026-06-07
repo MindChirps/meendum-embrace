@@ -1,5 +1,15 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { dict, type Lang } from "@/lib/i18n";
 import type { Database } from "@/integrations/supabase/types";
@@ -150,6 +160,9 @@ function Dashboard() {
           <h2 className="font-semibold mb-3">{t("todayProgress")}</h2>
           <TodayProgress tasks={tasks} logs={logs} lang={lang} />
         </section>
+
+        {/* History & Trends */}
+        <HistorySection recipientId={recipient.id} tasks={tasks} lang={lang} />
 
         {/* Tasks per session */}
         {SESSIONS.map((s) => (
@@ -334,6 +347,278 @@ function SessionBlock({
         >
           + {t("addTask")}
         </button>
+      )}
+    </section>
+  );
+}
+
+function HistorySection({
+  recipientId,
+  tasks,
+  lang,
+}: {
+  recipientId: string;
+  tasks: Task[];
+  lang: Lang;
+}) {
+  const t = (k: keyof typeof dict) => dict[k][lang];
+  const [range, setRange] = useState<7 | 30>(7);
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - (range - 1));
+    supabase
+      .from("activity_logs")
+      .select("*")
+      .eq("recipient_id", recipientId)
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        if (cancelled) return;
+        setLogs(data ?? []);
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recipientId, range]);
+
+  const days = useMemo(() => {
+    const arr: { key: string; date: Date; label: string }[] = [];
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (range - 1));
+    const locale = lang === "ta" ? "ta-IN" : "en-GB";
+    for (let i = 0; i < range; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      arr.push({
+        key,
+        date: d,
+        label: d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit" }),
+      });
+    }
+    return arr;
+  }, [range, lang]);
+
+  const consistencyData = useMemo(() => {
+    const buckets = new Map<string, { completed: number; skipped: number }>();
+    days.forEach((d) => buckets.set(d.key, { completed: 0, skipped: 0 }));
+    for (const l of logs) {
+      const d = new Date(l.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const b = buckets.get(key);
+      if (!b) continue;
+      if (l.status === "completed") b.completed += 1;
+      else if (l.status === "skipped") b.skipped += 1;
+    }
+    return days.map((d) => {
+      const b = buckets.get(d.key)!;
+      return {
+        label: d.label,
+        total: b.completed + b.skipped,
+        hasSkip: b.skipped > 0,
+      };
+    });
+  }, [days, logs]);
+
+  const painFatigueData = useMemo(() => {
+    const buckets = new Map<string, { pain: number; fatigue: number }>();
+    days.forEach((d) => buckets.set(d.key, { pain: 0, fatigue: 0 }));
+    for (const l of logs) {
+      if (l.status !== "skipped" || !l.skip_reason) continue;
+      const d = new Date(l.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const b = buckets.get(key);
+      if (!b) continue;
+      if (l.skip_reason === "pain") b.pain += 1;
+      else if (l.skip_reason === "fatigue") b.fatigue += 1;
+    }
+    return days.map((d) => {
+      const b = buckets.get(d.key)!;
+      return { label: d.label, pain: b.pain, fatigue: b.fatigue };
+    });
+  }, [days, logs]);
+
+  const painTotal = painFatigueData.reduce((s, d) => s + d.pain, 0);
+  const fatigueTotal = painFatigueData.reduce((s, d) => s + d.fatigue, 0);
+
+  const taskStats = useMemo(() => {
+    return tasks
+      .filter((x) => x.is_active)
+      .map((task) => {
+        let completed = 0;
+        let skipped = 0;
+        for (const l of logs) {
+          if (l.task_id !== task.id) continue;
+          if (l.status === "completed") completed += 1;
+          else if (l.status === "skipped") skipped += 1;
+        }
+        return { task, completed, skipped };
+      });
+  }, [tasks, logs]);
+
+  const chartHeight = range === 7 ? 160 : 200;
+  const empty = !loading && logs.length === 0;
+
+  return (
+    <section className="bg-card border border-border rounded-2xl p-4">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between"
+        aria-expanded={open}
+      >
+        <h2 className="font-semibold">{t("history")}</h2>
+        <span
+          className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        >
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-6">
+          {/* Range toggle */}
+          <div className="flex gap-2">
+            {([7, 30] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`px-3 py-1.5 rounded-full text-sm ${
+                  range === r
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-foreground"
+                }`}
+              >
+                {r === 7 ? t("last7Days") : t("last30Days")}
+              </button>
+            ))}
+          </div>
+
+          {loading ? (
+            <div
+              className="rounded-lg bg-muted animate-pulse"
+              style={{ height: chartHeight }}
+            />
+          ) : empty ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {t("noActivityPeriod")}
+            </p>
+          ) : (
+            <>
+              {/* Consistency */}
+              <div>
+                <h3 className="text-sm font-medium mb-2">{t("consistency")}</h3>
+                <div style={{ width: "100%", height: chartHeight }}>
+                  <ResponsiveContainer>
+                    <BarChart data={consistencyData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                        interval={range === 30 ? 3 : 0}
+                      />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                      <RTooltip
+                        contentStyle={{
+                          background: "var(--card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                        {consistencyData.map((d, i) => (
+                          <Cell
+                            key={i}
+                            fill={d.hasSkip ? "var(--accent)" : "var(--primary)"}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Pain vs Fatigue */}
+              <div>
+                <h3 className="text-sm font-medium mb-2">{t("painVsFatigue")}</h3>
+                <div className="flex gap-4 mb-2">
+                  <div className="flex-1 bg-background rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">{t("pain")}</p>
+                    <p className="text-2xl font-semibold text-destructive">{painTotal}</p>
+                  </div>
+                  <div className="flex-1 bg-background rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">{t("fatigue")}</p>
+                    <p className="text-2xl font-semibold text-accent">{fatigueTotal}</p>
+                  </div>
+                </div>
+                <div style={{ width: "100%", height: chartHeight }}>
+                  <ResponsiveContainer>
+                    <BarChart data={painFatigueData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                        interval={range === 30 ? 3 : 0}
+                      />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                      <RTooltip
+                        contentStyle={{
+                          background: "var(--card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="pain" name={t("pain")} fill="var(--destructive)" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="fatigue" name={t("fatigue")} fill="var(--accent)" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Per-task adherence */}
+              <div>
+                <h3 className="text-sm font-medium mb-2">{t("perTaskAdherence")}</h3>
+                {taskStats.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">—</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {taskStats.map(({ task, completed, skipped }) => (
+                      <li
+                        key={task.id}
+                        className="flex items-center justify-between bg-background rounded-lg p-2 text-sm"
+                      >
+                        <span className="truncate">
+                          <span className="text-xs text-muted-foreground mr-2">
+                            {t(task.session_type as any)}
+                          </span>
+                          {task.name}
+                        </span>
+                        <span className="flex gap-2 shrink-0">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary">
+                            ✓ {completed}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-accent/10 text-accent">
+                            ✗ {skipped}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       )}
     </section>
   );

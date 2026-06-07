@@ -1,5 +1,15 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { dict, type Lang } from "@/lib/i18n";
 import type { Database } from "@/integrations/supabase/types";
